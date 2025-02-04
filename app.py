@@ -13,13 +13,15 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 @app.route('/preview', methods=['GET'])
 def get_preview():
-    """Fetch Instagram media preview"""
+    """Fetch Instagram media preview for all types"""
     url = request.args.get('url')
     if not url:
         return jsonify({"error": "URL is required"}), 400
 
     try:
-        post = instaloader.Post.from_shortcode(loader.context, url.split("/")[-2])
+        # Try to extract shortcode from URL for Post, Reel, Story, etc.
+        shortcode = url.split("/")[-2]
+        post = instaloader.Post.from_shortcode(loader.context, shortcode)
         media_url = post.url
         media_type = "video" if post.is_video else "image"
 
@@ -29,7 +31,9 @@ def get_preview():
             "media_url": media_url,
             "media_type": media_type
         })
+
     except Exception:
+        # Try Profile Picture
         try:
             profile = instaloader.Profile.from_username(loader.context, url.split("/")[-2])
             media_url = profile.profile_pic_url
@@ -40,7 +44,19 @@ def get_preview():
                 "media_type": "image"
             })
         except Exception:
-            return jsonify({"error": "Invalid Instagram URL or private account"}), 400
+            # Try Story (for user stories)
+            try:
+                username = url.split("/")[-2]
+                story = loader.get_stories(userids=[loader.context.get_profile(username).userid])
+                media_url = story[0].items[0].url
+
+                return jsonify({
+                    "username": username,
+                    "media_url": media_url,
+                    "media_type": "image"
+                })
+            except Exception:
+                return jsonify({"error": "Invalid Instagram URL or private account"}), 400
 
 @app.route('/download', methods=['GET'])
 def download_media():
