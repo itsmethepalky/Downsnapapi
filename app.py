@@ -3,6 +3,7 @@ import instaloader
 import os
 import datetime
 import requests
+import re
 
 app = Flask(__name__)
 loader = instaloader.Instaloader()
@@ -11,6 +12,13 @@ loader = instaloader.Instaloader()
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+def extract_shortcode(url):
+    """Extract shortcode from Instagram URL, ignoring query parameters."""
+    match = re.search(r'instagram\.com/p/([A-Za-z0-9-_]+)/', url)
+    if match:
+        return match.group(1)
+    return None
+
 @app.route('/preview', methods=['GET'])
 def get_preview():
     """Fetch Instagram media preview for all types, including carousels"""
@@ -18,9 +26,12 @@ def get_preview():
     if not url:
         return jsonify({"error": "URL is required"}), 400
 
+    # Extract shortcode from URL
+    shortcode = extract_shortcode(url)
+    if not shortcode:
+        return jsonify({"error": "Invalid Instagram URL or private account"}), 400
+
     try:
-        # Try to extract shortcode from URL for Post, Reel, Story, etc.
-        shortcode = url.split("/")[-2]
         post = instaloader.Post.from_shortcode(loader.context, shortcode)
 
         media_list = []
