@@ -3,7 +3,6 @@ import instaloader
 import os
 import datetime
 import requests
-import re
 
 app = Flask(__name__)
 loader = instaloader.Instaloader()
@@ -12,60 +11,75 @@ loader = instaloader.Instaloader()
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-def extract_shortcode(url):
-    """Extract shortcode from Instagram URL, ignoring query parameters."""
-    match = re.search(r'instagram\.com/p/([A-Za-z0-9-_]+)/', url)
-    if match:
-        return match.group(1)
-    return None
-
 @app.route('/preview', methods=['GET'])
 def get_preview():
-    """Fetch Instagram media preview for all types, including carousels"""
+    """Fetch Instagram media preview for all types"""
     url = request.args.get('url')
     if not url:
         return jsonify({"error": "URL is required"}), 400
 
-    # Extract shortcode from URL
-    shortcode = extract_shortcode(url)
-    if not shortcode:
-        return jsonify({"error": "Invalid Instagram URL or private account"}), 400
-
     try:
-        post = instaloader.Post.from_shortcode(loader.context, shortcode)
-
-        media_list = []
-        for idx, item in enumerate(post.get_sidecar_nodes()):
-            media_url = item.url
-            media_type = "video" if item.is_video else "image"
-            media_list.append({
-                "media_url": media_url,
-                "media_type": media_type,
-                "caption": item.caption if item.caption else "No caption"
-            })
-
-        return jsonify({
-            "username": post.owner_username,
-            "media_list": media_list
-        })
-
-    except Exception:
-        # Try Profile Picture
+        # Clean URL to remove query parameters
+        url = url.split('?')[0]  # Removing query parameters
+        
+        # Try to extract shortcode from URL for Post, Reel, Story, etc.
+        shortcode = url.split("/")[-2]
+        
+        # Try Post, Reel, or any media type (including carousel)
         try:
-            profile = instaloader.Profile.from_username(loader.context, url.split("/")[-2])
-            media_url = profile.profile_pic_url
+            post = instaloader.Post.from_shortcode(loader.context, shortcode)
+            media_items = []
 
+            # Check if the post itself is a video or image
+            if post.is_video:
+                media_items.append({
+                    "url": post.video_url,
+                    "type": "video"
+                })
+            else:
+                media_items.append({
+                    "url": post.url,
+                    "type": "image"
+                })
+
+            # If the post contains a carousel (multiple images/videos)
+            for post_media in post.get_sidecar_nodes():
+                if post_media.is_video:
+                    media_items.append({
+                        "url": post_media.video_url,
+                        "type": "video"
+                    })
+                else:
+                    media_items.append({
+                        "url": post_media.display_url,
+                        "type": "image"
+                    })
+            
+            return jsonify({
+                "username": post.owner_username,
+                "caption": post.caption,
+                "media_items": media_items
+            })
+        
+        except Exception as e:
+            return jsonify({"error": f"Failed to fetch post: {str(e)}"}), 400
+
+    except Exception as e:
+        # Handle other exceptions, e.g., profile pictures, stories, etc.
+        try:
+            # Try Profile Picture (if URL corresponds to a profile)
+            profile = instaloader.Profile.from_username(loader.context, url.split("/")[-2])
             return jsonify({
                 "username": profile.username,
-                "media_url": media_url,
+                "media_url": profile.profile_pic_url,
                 "media_type": "image"
             })
         except Exception:
-            # Try Story (for user stories)
             try:
+                # Try Story (for user stories)
                 username = url.split("/")[-2]
-                stories = loader.get_stories(userids=[loader.context.get_profile(username).userid])
-                media_url = stories[0].items[0].url
+                story = loader.get_stories(userids=[loader.context.get_profile(username).userid])
+                media_url = story[0].items[0].url
 
                 return jsonify({
                     "username": username,
@@ -74,6 +88,7 @@ def get_preview():
                 })
             except Exception:
                 return jsonify({"error": "Invalid Instagram URL or private account"}), 400
+
 
 @app.route('/download', methods=['GET'])
 def download_media():
@@ -84,10 +99,10 @@ def download_media():
         return jsonify({"error": "Media URL is required"}), 400
 
     try:
-        # Get current date and time
+        # Get current date and time for timestamp
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         
-        # Determine file extension
+        # Determine file extension based on the media type
         file_extension = "mp4" if "video" in media_url else "jpg"
         filename = f"Downsnap-{timestamp}.{file_extension}"
         filepath = os.path.join(DOWNLOAD_DIR, filename)
@@ -103,6 +118,7 @@ def download_media():
             return jsonify({"error": "Failed to download media"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000, debug=False)
