@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_file
 import instaloader
+from fake_useragent import UserAgent
 import os
 import datetime
 import requests
@@ -11,12 +12,18 @@ loader = instaloader.Instaloader()
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+# Initialize UserAgent to rotate user agents
+ua = UserAgent()
+
 @app.route('/preview', methods=['GET'])
 def get_preview():
     """Fetch Instagram media preview for all types"""
     url = request.args.get('url')
     if not url:
         return jsonify({"error": "URL is required"}), 400
+    headers = {
+        "User-Agent": ua.random
+    }
 
     try:
         # Clean URL to remove query parameters
