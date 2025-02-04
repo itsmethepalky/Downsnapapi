@@ -3,3 +3,4 @@ flask-cors
 instaloader
 requests
 gunicorn
+fake-useragent
