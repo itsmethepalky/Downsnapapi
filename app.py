@@ -13,7 +13,7 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 @app.route('/preview', methods=['GET'])
 def get_preview():
-    """Fetch Instagram media preview for all types"""
+    """Fetch Instagram media preview for all types, including carousels"""
     url = request.args.get('url')
     if not url:
         return jsonify({"error": "URL is required"}), 400
@@ -22,14 +22,20 @@ def get_preview():
         # Try to extract shortcode from URL for Post, Reel, Story, etc.
         shortcode = url.split("/")[-2]
         post = instaloader.Post.from_shortcode(loader.context, shortcode)
-        media_url = post.url
-        media_type = "video" if post.is_video else "image"
+
+        media_list = []
+        for idx, item in enumerate(post.get_sidecar_nodes()):
+            media_url = item.url
+            media_type = "video" if item.is_video else "image"
+            media_list.append({
+                "media_url": media_url,
+                "media_type": media_type,
+                "caption": item.caption if item.caption else "No caption"
+            })
 
         return jsonify({
             "username": post.owner_username,
-            "caption": post.caption,
-            "media_url": media_url,
-            "media_type": media_type
+            "media_list": media_list
         })
 
     except Exception:
