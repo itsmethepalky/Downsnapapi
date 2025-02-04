@@ -64,8 +64,8 @@ def get_preview():
             # Try Story (for user stories)
             try:
                 username = url.split("/")[-2]
-                story = loader.get_stories(userids=[loader.context.get_profile(username).userid])
-                media_url = story[0].items[0].url
+                stories = loader.get_stories(userids=[loader.context.get_profile(username).userid])
+                media_url = stories[0].items[0].url
 
                 return jsonify({
                     "username": username,
